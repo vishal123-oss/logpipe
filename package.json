@@ -1,0 +1,45 @@
+{
+  "name": "log-pipe",
+  "version": "1.0.0",
+  "description": "Custom Message Broker - LogPipe",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "example:producer": "ts-node examples/test-producer.ts",
+    "example:consumer": "ts-node examples/test-consumer.ts",
+    "example:test": "ts-node examples/test-logpipe.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "message-broker",
+    "log-pipe",
+    "event-log",
+    "nodejs"
+  ],
+  "author": "AI Coding Agent",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "prettier": "^3.8.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0"
+  },
+  "dependencies": {
+    "@types/express": "^4.17.25",
+    "@types/uuid": "^10.0.0",
+    "express": "^4.22.1",
+    "uuid": "^13.0.0"
+  }
+}
