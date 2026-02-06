@@ -6,8 +6,10 @@ export class TcpConsumer {
   private server: net.Server;
   private logPipe: LogPipe;
   private port: number;
-  private subscriptions: Map<net.Socket, { topic: string; offset: number }> =
-    new Map();
+  private subscriptions: Map<
+    net.Socket,
+    { topic: string; groupId: string; consumerId: string; offset: number }
+  > = new Map();
 
   constructor(port = 5000) {
     this.port = port;
@@ -20,9 +22,44 @@ export class TcpConsumer {
       try {
         const msg = data.toString().trim();
         if (msg.startsWith('SUB ')) {
-          const [, topic, offsetStr] = msg.split(' ');
-          const offset = parseInt(offsetStr || '0');
-          this.subscriptions.set(socket, { topic, offset });
+          const parts = msg.split(' ');
+          const topic = parts[1];
+          let groupId = 'default';
+          let consumerId = 'default';
+          let offset = 0;
+          if (parts.length === 3) {
+            // compat: SUB topic offset
+            offset = parseInt(parts[2] || '0');
+          } else if (parts.length >= 4) {
+            // SUB topic groupId consumerId [offset]
+            groupId = parts[2];
+            consumerId = parts[3];
+            if (parts.length > 4) {
+              offset = parseInt(parts[4] || '0');
+            } else {
+              // read committed progress if offset omitted
+              offset = await this.logPipe.getCommittedOffset(
+                topic,
+                groupId,
+                consumerId
+              );
+            }
+          } else {
+            // SUB topic -- use committed with defaults
+            offset = await this.logPipe.getCommittedOffset(
+              topic,
+              groupId,
+              consumerId
+            );
+          }
+          this.subscriptions.set(socket, { topic, groupId, consumerId, offset });
+          // commit initial offset for tracking
+          await this.logPipe.commitOffset(
+            topic,
+            groupId,
+            consumerId,
+            offset
+          );
           await this.streamMessages(socket);
         }
       } catch {
@@ -50,6 +87,13 @@ export class TcpConsumer {
         });
         currentOffset += events.length;
         this.subscriptions.set(socket, { ...sub, offset: currentOffset });
+        // commit updated offset to storage to persist progress (resume on reconnect/crash)
+        await this.logPipe.commitOffset(
+          sub.topic,
+          sub.groupId,
+          sub.consumerId,
+          currentOffset
+        );
       }
     }, 1000);
     (socket as any).pollInterval = interval;

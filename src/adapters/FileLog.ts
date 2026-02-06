@@ -38,4 +38,21 @@ export class FileLog implements LogStorage {
   ): Promise<string> {
     return this.logManager.readChunk(topic, start, length);
   }
+
+  async commitOffset(
+    topic: string,
+    groupId: string,
+    consumerId: string,
+    offset: number
+  ): Promise<void> {
+    await this.logManager.commitOffset(topic, groupId, consumerId, offset);
+  }
+
+  async getCommittedOffset(
+    topic: string,
+    groupId: string,
+    consumerId: string
+  ): Promise<number> {
+    return this.logManager.getCommittedOffset(topic, groupId, consumerId);
+  }
 }

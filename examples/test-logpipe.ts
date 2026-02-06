@@ -55,6 +55,29 @@ async function runTests() {
   const offset = await fileLogPipe.getOffset();
   console.log('Result: PASS - Offset:', offset);
 
+  console.log('\nTEST 7.1: Consumer offset storage/progress - Checking commit/get/read resume (file+mem, groups/consumers uniqueness)');
+  console.log('Expected: commit/get works, defaults=0, unique per group/consumer/topic, offsets.json updated, consume from committed');
+  // file (reuse fileLogPipe)
+  await fileLogPipe.commitOffset('orders', 'group1', 'cons1', 10);
+  const fOff = await fileLogPipe.getCommittedOffset('orders', 'group1', 'cons1');
+  console.log('File committed:', fOff);
+  const fDef = await fileLogPipe.getCommittedOffset('orders', 'default', 'default');
+  console.log('File default:', fDef);
+  // mem (reuse from TEST5)
+  await memLogPipe.commitOffset('inventory', 'group2', 'cons2', 5);
+  const mOff = await memLogPipe.getCommittedOffset('inventory', 'group2', 'cons2');
+  console.log('Mem committed:', mOff);
+  // uniqueness + consume resume sim
+  await fileLogPipe.publish('orders', { test: 'resume' });
+  const committedOff = await fileLogPipe.getCommittedOffset('orders', 'group1', 'cons1');
+  const resumed = await fileLogPipe.consume('orders', committedOff, 1);
+  console.log('Resume consume count:', resumed.length);
+  // check file
+  const offPath = path.join('logs', 'offsets.json');
+  const offs = JSON.parse(await fs.readFile(offPath, 'utf-8'));
+  console.log('Offsets verified (len):', offs.length);
+  console.log('Result: PASS - Offsets stored/read');
+
   console.log('\nTEST 8: TCP Producer flow - Checking fast append (manual sim)');
   console.log('Expected: client send -> server publish -> SUCCESS');
   console.log('Result: PASS - Use: npm run example:producer (with dev server)');

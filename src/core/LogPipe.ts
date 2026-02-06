@@ -38,4 +38,21 @@ export class LogPipe {
   ): Promise<string> {
     return this.storage.readMessage(topic, start, length);
   }
+
+  async commitOffset(
+    topic: string,
+    groupId: string,
+    consumerId: string,
+    offset: number
+  ): Promise<void> {
+    return this.storage.commitOffset(topic, groupId, consumerId, offset);
+  }
+
+  async getCommittedOffset(
+    topic: string,
+    groupId: string,
+    consumerId: string
+  ): Promise<number> {
+    return this.storage.getCommittedOffset(topic, groupId, consumerId);
+  }
 }

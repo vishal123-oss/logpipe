@@ -11,4 +11,6 @@ export interface LogStorage {
   read(topic: string, offset: number, limit?: number): Promise<LogEntry[]>;
   getLength(): Promise<number>;
   readMessage(topic: string, start: number, length: number): Promise<string>;
+  commitOffset(topic: string, groupId: string, consumerId: string, offset: number): Promise<void>;
+  getCommittedOffset(topic: string, groupId: string, consumerId: string): Promise<number>;
 }

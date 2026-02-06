@@ -27,8 +27,8 @@ npm run dev
 - Run example: `npx ts-node examples/test-producer.ts` (after `npm run dev` in another terminal)
 
 ## TCP Consumer (streaming subs with long polling)
-- Connect to port 5000, send `SUB topic offset` (e.g. `SUB orders 0`)
-- Streams new messages as JSON lines (long poll via interval check on index)
+- Connect to port 5000, send `SUB topic [groupId] [consumerId] [offset]` (e.g. `SUB orders default default 0` or compat `SUB orders 0`; uses committed offset if omitted)
+- Streams new messages as JSON lines (long poll via interval check on index); auto-commits offset after each batch for progress/resume
 - Run example: `npx ts-node examples/test-consumer.ts` (after `npm run dev`)
 
 ## Examples

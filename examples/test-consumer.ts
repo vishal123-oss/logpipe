@@ -1,7 +1,8 @@
 import * as net from 'net';
 
 const client = net.connect(5000, 'localhost', () => {
-  client.write('SUB orders 0');
+  // use explicit groupId/consumerId (defaults ok; offset from committed if omitted)
+  client.write('SUB orders default default 0');
 });
 
 client.on('data', (data) => {
