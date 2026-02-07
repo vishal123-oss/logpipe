@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { TopicStats, ConsumerStats, GroupStats } from '../interfaces/LogStorage';
 
 export class LogManager {
   private baseDir: string;
@@ -186,5 +187,188 @@ export class LogManager {
         o.consumerId === consumerId
     );
     return found ? found.offset : 0;
+  }
+
+  // get producer topics (dirs with events) + consumer topics (from offsets); tag or
+  async getTopics(): Promise<Array<{ topic: string; tag: 'producer_events' | 'consumer_events' }>> {
+    await this.ensureBaseDir();
+    const producerTopics = new Set<string>();
+    try {
+      const entries = await fs.readdir(this.baseDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          // check if has events.log to confirm producer
+          const eventsPath = path.join(this.baseDir, entry.name, 'events.log');
+          try {
+            await fs.access(eventsPath);
+            producerTopics.add(entry.name);
+          } catch (e) {
+            console.error('Topic access check failed:', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to list topic directories:', e);
+    }
+
+    const offsets = await this.loadOffsets();
+    const consumerTopics = new Set(offsets.map(o => o.topic));
+
+    const allTopics = new Map<string, 'producer_events' | 'consumer_events'>();
+    for (const t of producerTopics) {
+      allTopics.set(t, 'producer_events');
+    }
+    for (const t of consumerTopics) {
+      if (!allTopics.has(t)) {
+        allTopics.set(t, 'consumer_events');
+      }
+    }
+    return Array.from(allTopics.entries()).map(([topic, tag]) => ({ topic, tag }));
+  }
+
+  // compute detailed stats for topic (scan index for events/dates, offsets for consumers/groups)
+  async getTopicStats(topic: string): Promise<TopicStats> {
+    // event count + dates from index/logs
+    const index = await this.getIndex(topic);
+    const eventCount = index.length;
+    if (eventCount === 0) {
+      // no topic dir or events
+      throw new Error(`Topic '${topic}' does not exist or has no events produced yet`);
+    }
+    let firstEventAt: Date | undefined;
+    let lastEventAt: Date | undefined;
+    const producedDates = new Set<string>();
+    // peek first/last via chunks (avoid full load)
+    const firstChunk = await this.readChunk(topic, index[0].start, index[0].length);
+    const firstEntry = JSON.parse(firstChunk) as any;
+    firstEventAt = new Date(firstEntry.timestamp);
+    producedDates.add(firstEventAt.toISOString().split('T')[0]);
+
+    if (eventCount > 1) {
+      const lastChunk = await this.readChunk(topic, index[eventCount - 1].start, index[eventCount - 1].length);
+      const lastEntry = JSON.parse(lastChunk) as any;
+      lastEventAt = new Date(lastEntry.timestamp);
+      producedDates.add(lastEventAt.toISOString().split('T')[0]);
+    }
+
+    // consumers/groups + per-consumer details/% from offsets
+    const offsets = await this.loadOffsets();
+    const consumers = new Set<string>();
+    const groups = new Set<string>();
+    const consumerDetails: Array<{ consumerId: string; groupId: string; committedOffset: number; percentRead: number; eventsReadApprox: number }> = [];
+    for (const o of offsets) {
+      if (o.topic === topic) {
+        const percent = eventCount > 0 ? Math.round((o.offset / eventCount) * 100) : 0;
+        groups.add(o.groupId);
+        consumers.add(o.consumerId);
+        consumerDetails.push({
+          consumerId: o.consumerId,
+          groupId: o.groupId,
+          committedOffset: o.offset,
+          percentRead: percent,
+          eventsReadApprox: o.offset,
+        });
+      }
+    }
+
+    const totalReads = 0; // FileLog merges
+    const avgProgress = consumerDetails.length > 0 ? Math.round(consumerDetails.reduce((sum, d) => sum + d.percentRead, 0) / consumerDetails.length) : 0;
+    const activity = totalReads > 10 ? 'high' : totalReads > 3 ? 'medium' : 'low';
+
+    return {
+      topic,
+      eventCount,
+      producedDates: Array.from(producedDates).sort(),
+      producers: ['system'], // placeholder (no producer tracking; events via /publish or TCP)
+      consumers: Array.from(consumers),
+      groups: Array.from(groups),
+      readCount: totalReads, // FileLog tracks separately
+      lastReadAt: undefined, // FileLog tracks separately
+      firstEventAt,
+      lastEventAt,
+      consumerDetails,
+      insights: {
+        totalUniqueReaders: consumers.size,
+        avgProgressPercent: avgProgress,
+        activityLevel: activity,
+      },
+    };
+  }
+
+  // get consumers (multi-topic support; progress from offsets, event links via index peek, deps)
+  async getConsumers(consumerId?: string): Promise<ConsumerStats[]> {
+    const offsets = await this.loadOffsets();
+    const consumerMap = new Map<string, ConsumerStats>();
+    for (const o of offsets) {
+      const { topic: t, groupId: g, consumerId: c, offset } = o;
+      if (consumerId && c !== consumerId) continue;
+      if (!consumerMap.has(c)) {
+        consumerMap.set(c, {
+          consumerId: c,
+          groups: [],
+          topics: [],
+          progress: [],
+          totalEventsConsumed: 0,
+          dependencies: [],
+          lastActivity: undefined,
+        });
+      }
+      const stats = consumerMap.get(c)!;
+      if (!stats.groups.includes(g)) stats.groups.push(g);
+      if (!stats.topics.includes(t)) stats.topics.push(t);
+      // progress + event link: peek last committed event ID from index if exists
+      let lastEventLink = '';
+      const index = await this.getIndex(t);
+      if (index.length > offset) {
+        // peek chunk for ID
+        const chunk = await this.readChunk(t, index[offset].start, index[offset].length);
+        try {
+          const entry = JSON.parse(chunk) as any;
+          lastEventLink = entry.id || '';
+        } catch {}
+      }
+      stats.progress.push({ topic: t, committedOffset: offset, lastEventLink });
+      stats.totalEventsConsumed += offset;
+      stats.dependencies = [...new Set([...stats.dependencies, g, t])]; // unique deps
+    }
+    return Array.from(consumerMap.values());
+  }
+
+  // get groups stats (consumers/topics/progress from offsets)
+  async getGroups(groupId?: string): Promise<GroupStats[]> {
+    const offsets = await this.loadOffsets();
+    const groupMap = new Map<string, GroupStats>();
+    for (const o of offsets) {
+      const { topic: t, groupId: g, consumerId: c, offset } = o;
+      if (groupId && g !== groupId) continue;
+      if (!groupMap.has(g)) {
+        groupMap.set(g, {
+          groupId: g,
+          consumers: [],
+          topics: [],
+          progress: [],
+          totalEventsConsumed: 0,
+          insights: { totalConsumers: 0, avgProgress: 0 },
+        });
+      }
+      const stats = groupMap.get(g)!;
+      if (!stats.consumers.includes(c)) stats.consumers.push(c);
+      if (!stats.topics.includes(t)) stats.topics.push(t);
+      // progress: avg offset
+      const existing = stats.progress.find(p => p.topic === t);
+      if (existing) {
+        existing.avgOffset = (existing.avgOffset + offset) / 2;
+        existing.consumersCount++;
+      } else {
+        stats.progress.push({ topic: t, avgOffset: offset, consumersCount: 1 });
+      }
+      stats.totalEventsConsumed += offset;
+    }
+    // compute insights
+    for (const stats of groupMap.values()) {
+      stats.insights.totalConsumers = stats.consumers.length;
+      stats.insights.avgProgress = stats.progress.length > 0 ? Math.round(stats.progress.reduce((sum, p) => sum + p.avgOffset, 0) / stats.progress.length) : 0;
+    }
+    return Array.from(groupMap.values());
   }
 }

@@ -18,6 +18,10 @@ npm run dev
 ## API
 - POST /publish - Publish event (HTTP)
 - GET /consume?topic=xx&consumerId=xx&offset=0 - Consume events from topic (indexed for perf)
+- GET /topics - List topics with tag (producer_events or consumer_events)
+- GET /topics/:topic/stats - Full topic stats (producers/consumers/groups/reads/dates etc.)
+- GET /consumers?consumerId=xx - Consumer list/stats (multi-topic progress, event links, deps)
+- GET /groups?groupId=xx - Group list/stats (consumers/topics/progress)
 - GET /read?topic=xx&start=0&length=100 - Read specific chunk from topic file (efficient, no full load)
 - Cart flow dummies: /api/cart/add, /api/checkout, /api/payment/process, /api/notify/email, /api/cart/remove (publish events, fast response)
 
@@ -33,6 +37,7 @@ npm run dev
 
 ## Examples
 See `examples/test-logpipe.ts` (run: `npx ts-node examples/test-logpipe.ts`) for usage tests (publish, consume, chunk read).
+New: `examples/test-multi-topic-consumer.ts` (npm run example:multi) for multi-topic/consumers E2E + admin API data.
 
 ## Development
 - `npm run dev` - Start in dev mode

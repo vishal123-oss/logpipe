@@ -15,6 +15,7 @@
     "example:consumer": "ts-node examples/test-consumer.ts",
     "example:test": "ts-node examples/test-logpipe.ts",
     "example:offsets": "ts-node examples/test-offset-features.ts",
+    "example:multi": "ts-node examples/test-multi-topic-consumer.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

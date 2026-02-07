@@ -241,6 +241,10 @@ Send a subscription line:
 | Method | Path        | Purpose |
 |--------|-------------|---------|
 | GET    | `/status`   | Broker status; `currentOffset` = total log length |
+| GET    | `/topics`   | List all topics with tag (producer_events = has log events; consumer_events = has offset commits) |
+| GET    | `/topics/:topic/stats` | Detailed stats (producers/consumers/groups, event counts, reads, date-wise creation) |
+| GET    | `/consumers?consumerId=xx` | List consumers + multi-topic stats (progress, event links, groups/deps, reads) |
+| GET    | `/groups?groupId=xx` | List groups + stats (attached consumers, topics, progress) |
 | GET    | `/read`     | Raw read: `?topic=...&start=0&length=100` |
 
 ---

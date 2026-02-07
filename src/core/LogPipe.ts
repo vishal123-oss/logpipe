@@ -1,4 +1,4 @@
-import { LogEntry, LogStorage } from '../interfaces/LogStorage';
+import { LogEntry, LogStorage, TopicStats, ConsumerStats, GroupStats } from '../interfaces/LogStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 export class LogPipe {
@@ -54,5 +54,25 @@ export class LogPipe {
     consumerId: string
   ): Promise<number> {
     return this.storage.getCommittedOffset(topic, groupId, consumerId);
+  }
+
+  // list topics with tag
+  async getTopics(): Promise<Array<{ topic: string; tag: 'producer_events' | 'consumer_events' }>> {
+    return this.storage.getTopics();
+  }
+
+  // get detailed topic stats
+  async getTopicStats(topic: string): Promise<TopicStats> {
+    return this.storage.getTopicStats(topic);
+  }
+
+  // get consumer list/stats (supports multi-topic reads)
+  async getConsumers(consumerId?: string): Promise<ConsumerStats[]> {
+    return this.storage.getConsumers(consumerId);
+  }
+
+  // get groups list/stats (consumers/progress)
+  async getGroups(groupId?: string): Promise<GroupStats[]> {
+    return this.storage.getGroups(groupId);
   }
 }
